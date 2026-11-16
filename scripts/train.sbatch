@@ -11,9 +11,10 @@
 #     sbatch --export=ALL,POLICY=kan,RUN=kan_v1 scripts/train.sbatch
 #     sbatch --export=ALL,POLICY=mlp,RUN=mlp_v1 scripts/train.sbatch
 #
-# An update is three 300-s OpenFAST episodes run side by side (~17 min of wall time), so the
-# default 100 updates take about 29 hours. More cores do not make it faster; 16 CPUs leave room
-# for the six calibration episodes of the first run.
+# With the defaults an update is three 300-s OpenFAST episodes side by side (about 23 min on the
+# compute nodes), so 100 updates take about 38 hours, and more cores do not make that faster.
+# To use more cores, pass more and shorter episodes through EXTRA and request two CPUs per episode:
+#     sbatch -c 48 --export=ALL,POLICY=kan,RUN=kan_v2,EXTRA="--episodes-per-speed 4 --episode-seconds 75 --burn-in-seconds 20 --seeds 101 102 103 104 105 106 107 108" scripts/train.sbatch
 
 set -euo pipefail
 cd "$SLURM_SUBMIT_DIR"

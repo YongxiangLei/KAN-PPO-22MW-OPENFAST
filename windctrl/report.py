@@ -1,19 +1,23 @@
 """Collect results, draw the paper figures, write the LaTeX tables and build the Overleaf zip.
 
-    python -m windctrl.report
+    python -m windctrl.report --tag v1
 
-Reads whatever exists under outputs/ and writes
+A tag names one set of runs: kan_<tag>, mlp_<tag>, eval_<tag>, eval_law_<tag>. The script reads
+whatever exists under outputs/ and writes
 
-    results/                 copies of the numbers worth keeping in git (CSV, JSON, checkpoints)
-    paper/figures/*.pdf      figures at IEEE column widths (3.5 in / 7.16 in), embedded fonts
-    paper/tables/*.tex       tables and \\newcommand values that paper/main.tex \\input's
-    paper/overleaf.zip       the paper/ directory, ready for "New Project > Upload Project"
+    results/                     copies of the numbers worth keeping in git, for every tag
+    paper/<tag>/figures/*.pdf    figures at IEEE column widths (3.5 in / 7.16 in), embedded fonts
+    paper/<tag>/tables/*.tex     tables and \\newcommand values that paper/main.tex \\input's
+    paper/overleaf_<tag>.zip     main.tex, refs.bib and that tag's figures/ and tables/, ready for
+                                 "New Project > Upload Project" on Overleaf
 
 It never invents a number: a table or figure is only written when its data exist, and
 paper/main.tex prints a visible placeholder for anything missing. Safe to re-run at any time.
 """
+import argparse
 import csv
 import json
+import os
 import shutil
 import zipfile
 from pathlib import Path
@@ -25,8 +29,14 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT, RES, PAPER = ROOT / "outputs", ROOT / "results", ROOT / "paper"
-FIG, TAB = PAPER / "figures", PAPER / "tables"
-KAN_RUN, MLP_RUN, EVAL, EVAL_LAW, SWEEP = "kan_v1", "mlp_v1", "eval_v1", "eval_law", "ipc_sweep"
+SWEEP = "ipc_sweep"
+TAG = FIG = TAB = KAN_RUN = MLP_RUN = EVAL = EVAL_LAW = None   # set by use_tag()
+
+
+def use_tag(tag):
+    global TAG, FIG, TAB, KAN_RUN, MLP_RUN, EVAL, EVAL_LAW
+    TAG, FIG, TAB = tag, PAPER / tag / "figures", PAPER / tag / "tables"
+    KAN_RUN, MLP_RUN, EVAL, EVAL_LAW = f"kan_{tag}", f"mlp_{tag}", f"eval_{tag}", f"eval_law_{tag}"
 
 plt.rcParams.update({
     "font.family": "serif", "font.serif": ["Times New Roman", "Liberation Serif", "STIXGeneral"],
@@ -73,11 +83,12 @@ def written(path, done):
 def collect_results(done):
     RES.mkdir(exist_ok=True)
     wanted = [(ROOT / "config" / "norm.json", "norm.json")]
-    for run in (KAN_RUN, MLP_RUN):
-        wanted += [(OUT / run / f, f"{run}/{f}") for f in ("progress.csv", "args.json", "checkpoint.pt")]
-    for name in (SWEEP, EVAL, EVAL_LAW):
-        wanted += [(OUT / name / f, f"{name}/{f}") for f in ("summary.md", "results.csv", "args.json")]
-    wanted += [(OUT / KAN_RUN / "interpret" / f, f"{KAN_RUN}/interpret/{f}") for f in ("report.md", "law.json", "edges.png")]
+    for d in sorted(OUT.iterdir()):          # every tag, not only the one the paper is built for
+        if not d.is_dir() or d.name.startswith("_"):
+            continue
+        names = ("progress.csv", "args.json", "checkpoint.pt", "summary.md", "results.csv")
+        wanted += [(d / f, f"{d.name}/{f}") for f in names]
+        wanted += [(d / "interpret" / f, f"{d.name}/interpret/{f}") for f in ("report.md", "law.json", "edges.png")]
     for src, rel in wanted:
         if src.is_file():
             dst = RES / rel
@@ -259,6 +270,22 @@ def values(best_ipc, done):
         lines += [f"\\newcommand{{\\NormMs}}{{{n['Ms'] / 1e3:.0f}}}", f"\\newcommand{{\\NormVbar}}{{{n['v_bar']:.2f}}}",
                   f"\\newcommand{{\\NormSigmaV}}{{{n['sigma_v']:.2f}}}", f"\\newcommand{{\\NormSigmaW}}{{{n['sigma_w'] * rpm:.3f}}}",
                   f"\\newcommand{{\\NormBetaBar}}{{{n['beta_bar']:.3f}}}", f"\\newcommand{{\\NormSigmaBeta}}{{{n['sigma_beta']:.3f}}}"]
+    args_path = OUT / KAN_RUN / "args.json"
+    if args_path.is_file():                      # training protocol, so the text matches the runs
+        a = json.loads(args_path.read_text())
+        per, burn, T, seeds = a.get("episodes_per_speed", 1), a.get("burn_in_seconds", 0.0), a["episode_seconds"], a["seeds"]
+        n_eps, word = per * len(a["speeds"]), {1: "one", 2: "two", 3: "three", 4: "four", 6: "six", 8: "eight"}
+        consecutive = seeds == list(range(seeds[0], seeds[0] + len(seeds))) and len(seeds) > 2
+        seed_text = f"{seeds[0]}--{seeds[-1]}" if consecutive else " and ".join(str(x) for x in seeds)
+        if per == 1:
+            protocol = (f"{word.get(n_eps, n_eps)} {T:g}-s episodes per update (one per mean wind speed, alternating "
+                        f"the training seeds), and {a['updates']} updates")
+        else:
+            protocol = (f"{n_eps} episodes of {T:g}~s per update ({word.get(per, per)} per mean wind speed, taking the "
+                        f"training seeds in turn)" + (f", each preceded by a {burn:g}-s start-up period that is "
+                        f"simulated but not used for learning" if burn else "") + f", and {a['updates']} updates")
+        lines += [f"\\newcommand{{\\TrainProtocol}}{{{protocol}}}",
+                  f"\\newcommand{{\\TrainWinds}}{{Turbulence seeds {seed_text} are used for training ({T:g}-s episodes)}}"]
     for name, run in (("Kan", KAN_RUN), ("Mlp", MLP_RUN)):
         p = OUT / run / "progress.csv"
         if p.is_file() and len(read_csv(p)):
@@ -302,17 +329,20 @@ def tab_law(done):
 # ---- zip ----------------------------------------------------------------------------------------
 
 def build_zip(done):
-    target = PAPER / "overleaf.zip"
+    target = PAPER / f"overleaf_{TAG}.zip"
     with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as zf:
-        for path in sorted(PAPER.rglob("*")):
-            if path.is_file() and path != target and path.suffix not in (".aux", ".log", ".out", ".blg", ".bbl", ".gz"):
-                if path.name == "main.pdf":
-                    continue
-                zf.write(path, path.relative_to(PAPER))
+        for name in ("main.tex", "refs.bib"):
+            zf.write(PAPER / name, name)
+        for path in sorted((PAPER / TAG).rglob("*")):     # paper/<tag>/figures -> figures, same for tables
+            if path.is_file():
+                zf.write(path, path.relative_to(PAPER / TAG))
     written(target, done)
 
 
 def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--tag", default=os.environ.get("WINDCTRL_TAG", "v1"), help="which set of runs the paper is built for")
+    use_tag(ap.parse_args().tag)
     done = []
     FIG.mkdir(parents=True, exist_ok=True)
     TAB.mkdir(parents=True, exist_ok=True)

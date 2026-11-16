@@ -12,7 +12,9 @@
 #   5. evaluate the four-gain law in closed loop
 #   6. write results/, the paper figures and tables, paper/overleaf.zip; commit and push
 #
-# KAN_JOB / MLP_JOB are the Slurm job ids of the training runs to wait for.
+# TAG names the set of runs (default v1); KAN_JOB / MLP_JOB are the Slurm job ids of the training
+# runs to wait for. A second set runs alongside with, e.g.,
+#     TAG=v2 KAN_JOB=<id> MLP_JOB=<id> nohup setsid scripts/pipeline.sh > logs/pipeline_v2.out 2>&1 < /dev/null &
 
 set -uo pipefail
 cd "$(dirname "$0")/.."
@@ -20,28 +22,33 @@ source /apps/miniforge/24.11.3/etc/profile.d/conda.sh
 conda activate windctrl
 export OMP_NUM_THREADS=1
 
+TAG=${TAG:-v1}                   # names the set of runs: kan_$TAG, mlp_$TAG, eval_$TAG, eval_law_$TAG
 KAN_JOB=${KAN_JOB:-206385}
 MLP_JOB=${MLP_JOB:-206386}
-KAN_RUN=kan_v1
-MLP_RUN=mlp_v1
+KAN_RUN=kan_$TAG
+MLP_RUN=mlp_$TAG
 PUSH_EVERY=$((4 * 3600))          # seconds between progress pushes while training runs
 
-log() { echo "[$(date '+%F %T')] $*"; }
+log() { echo "[$(date '+%F %T')] [$TAG] $*"; }
 
 running() { squeue -h -j "$1" 2>/dev/null | grep -q .; }
 
 publish() {
-    # Refresh results/, paper/ and the zip, then commit and push whatever changed.
-    python -m windctrl.report > logs/report.out 2>&1 || { log "report failed, see logs/report.out"; return 1; }
+    # Refresh results/, this tag's paper files and zip, then commit and push whatever changed.
+    # The lock keeps two pipelines (different tags) from using the git index at the same time.
+    exec 9> logs/publish.lock
+    flock 9
+    python -m windctrl.report --tag "$TAG" > "logs/report_$TAG.out" 2>&1 || { log "report failed, see logs/report_$TAG.out"; flock -u 9; return 1; }
     git add -A results paper config docs
     if git diff --cached --quiet; then
         log "publish: nothing new"
-        return 0
-    fi
-    git commit -q -m "$1
+    else
+        git commit -q -m "$1 ($TAG)
 
 Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>" && log "committed: $1"
+    fi
     git push -q origin main && log "pushed" || log "push failed (will retry at the next publish)"
+    flock -u 9
 }
 
 evaluate_job() {
@@ -109,23 +116,23 @@ KAN_INDEX=1
 if [ -n "$BEST" ]; then CONTROLLERS="$CONTROLLERS $BEST"; KAN_INDEX=2; fi
 CONTROLLERS="$CONTROLLERS kan:$KAN_RUN"
 [ -f outputs/$MLP_RUN/checkpoint.pt ] && CONTROLLERS="$CONTROLLERS mlp:$MLP_RUN"
-if [ ! -f outputs/eval_v1/results.csv ]; then
-    evaluate_job 56 "--name eval_v1 --controllers $CONTROLLERS"
+if [ ! -f outputs/eval_$TAG/results.csv ]; then
+    evaluate_job 56 "--name eval_$TAG --controllers $CONTROLLERS"
 fi
-[ -f outputs/eval_v1/results.csv ] || { log "evaluation produced no results; stopping"; publish "Update results"; exit 1; }
+[ -f outputs/eval_$TAG/results.csv ] || { log "evaluation produced no results; stopping"; publish "Update results"; exit 1; }
 publish "Add closed-loop evaluation on unseen winds"
 
 # ---- 4. interpretation ---------------------------------------------------------------------------
 log "stage 4: interpretation of the KAN policy"
 if [ ! -f outputs/$KAN_RUN/interpret/law.json ]; then
-    python -m windctrl.interpret --run "$KAN_RUN" --states "outputs/eval_v1/states_c${KAN_INDEX}.npz" > logs/interpret.out 2>&1 \
-        || log "interpretation failed, see logs/interpret.out"
+    python -m windctrl.interpret --run "$KAN_RUN" --states "outputs/eval_$TAG/states_c${KAN_INDEX}.npz" > "logs/interpret_$TAG.out" 2>&1 \
+        || log "interpretation failed, see logs/interpret_$TAG.out"
 fi
 
 # ---- 5. four-gain law in closed loop -------------------------------------------------------------
-if [ -f outputs/$KAN_RUN/interpret/law.json ] && [ ! -f outputs/eval_law/results.csv ]; then
+if [ -f outputs/$KAN_RUN/interpret/law.json ] && [ ! -f outputs/eval_law_$TAG/results.csv ]; then
     log "stage 5: four-gain law in closed loop"
-    evaluate_job 16 "--name eval_law --controllers law:$KAN_RUN"
+    evaluate_job 16 "--name eval_law_$TAG --controllers law:$KAN_RUN"
 fi
 
 # ---- 6. publish ----------------------------------------------------------------------------------

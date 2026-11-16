@@ -21,6 +21,9 @@
 
 % Measured values quoted in the text; red placeholders until the report has produced them.
 \IfFileExists{tables/values.tex}{\input{tables/values.tex}}{}
+\providecommand{\TrainWinds}{Turbulence seeds 101 and 102 are used for training (300-s episodes)}
+\providecommand{\TrainProtocol}{three 300-s episodes per update (one per mean wind speed, alternating
+the training seeds), and 100 updates}
 \providecommand{\NormMs}{\pv{Ms}}
 \providecommand{\NormVbar}{\pv{v-bar}}
 \providecommand{\NormSigmaV}{\pv{sigma-v}}
@@ -153,7 +156,7 @@ acts in the rotating frame: it uses neither an azimuth input nor a Coleman trans
 \subsection{Simulation Protocol}
 Wind fields are generated with TurbSim \cite{jonkman2009turbsim} using the IEC Kaimal model with
 normal turbulence, class B \cite{iec61400}, at mean hub-height wind speeds of 13, 16, and 19~m/s.
-Turbulence seeds 101 and 102 are used for training (300-s episodes) and seeds 201 and 202 for
+\TrainWinds\ and seeds 201 and 202 for
 evaluation (600-s runs). All runs include irregular waves with a significant wave height of
 4.52~m and a peak period of 9.45~s. The first 60~s of each run are excluded from all statistics.
 Damage-equivalent loads (DELs) are computed from the rainflow cycle counts \cite{astm1049} of
@@ -186,9 +189,8 @@ parameters) and for the critic (4673 parameters).
 Both policies are trained with PPO \cite{schulman2017ppo} and generalized advantage estimation
 \cite{schulman2016gae}: learning rates of $3\times10^{-4}$ (actor) and $10^{-3}$ (critic) with
 linear decay, $\gamma = 0.99$, $\lambda = 0.95$, clip range 0.2, 10 epochs per update, minibatch
-size 512, no entropy bonus, gradient-norm clip 0.5, initial policy standard deviation 0.3, three
-300-s episodes per update (one per mean wind speed, alternating the two training seeds), and 100
-updates.
+size 512, no entropy bonus, gradient-norm clip 0.5, initial policy standard deviation 0.3,
+\TrainProtocol.
 
 \subsection{Interpreting the Policy}
 Before the $\tanh$, \eqref{eq:kan} is an exact sum, so the contribution of every input to every

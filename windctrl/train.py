@@ -10,6 +10,12 @@ Networks, hyper-parameters and training protocol follow the reference KAN-PPO IP
     minibatch 512, no entropy bonus, grad-norm clip 0.5, initial std 0.3, three 300-s episodes per
     update (13, 16, 19 m/s; turbulence seeds 101/102 alternating), 100 updates.
 
+The same batch can be collected faster with more, shorter episodes side by side, e.g. twelve 75-s
+episodes (four seeds per wind speed) after a 20-s start-up that is simulated but not learned from:
+
+    python -m windctrl.train --run kan_v2 --episodes-per-speed 4 --episode-seconds 75 \
+        --burn-in-seconds 20 --seeds 101 102 103 104 105 106 107 108
+
 One deliberate difference: the pitch rate limit defaults to the 22 MW model's own 2 deg/s rather
 than the paper's 10 deg/s (pass --pitch-rate-deg 10 to reproduce the paper's setting).
 
@@ -190,7 +196,11 @@ def main():
     ap.add_argument("--updates", type=int, default=100)
     ap.add_argument("--speeds", type=float, nargs="+", default=[13.0, 16.0, 19.0], help="mean wind speeds (m/s)")
     ap.add_argument("--seeds", type=int, nargs="+", default=[101, 102], help="training turbulence seeds, alternated")
-    ap.add_argument("--episode-seconds", type=float, default=300.0)
+    ap.add_argument("--episode-seconds", type=float, default=300.0, help="simulated time used for learning per episode")
+    ap.add_argument("--episodes-per-speed", type=int, default=1,
+                    help="parallel episodes per wind speed in one update, each on its own seed and CPU core")
+    ap.add_argument("--burn-in-seconds", type=float, default=0.0,
+                    help="start-up time simulated before each episode and left out of the PPO batch")
     ap.add_argument("--pitch-rate-deg", type=float, default=2.0,
                     help="pitch rate limit (deg/s). 2 is the 22 MW model's own; the reference paper used 10")
     ap.add_argument("--theta-max-deg", type=float, default=4.0)
@@ -215,7 +225,8 @@ def main():
     env_kwargs = {"episode_seconds": args.episode_seconds, "pitch_rate_deg": args.pitch_rate_deg,
                   "theta_max_deg": args.theta_max_deg}
     norm = calibrate(args, env_kwargs) if args.recalibrate or not NORM_FILE.is_file() else load_norm()
-    env_kwargs["norm"] = norm
+    env_kwargs.update(norm=norm, episode_seconds=args.episode_seconds + args.burn_in_seconds)
+    per_speed, burn = args.episodes_per_speed, int(round(args.burn_in_seconds / 0.1))
 
     model = (KANPolicy if args.policy == "kan" else MLPPolicy)()
     print(f"{args.policy}: actor {count(model.actor_parameters())} parameters, "
@@ -224,7 +235,7 @@ def main():
                             {"params": model.critic.parameters(), "lr": args.lr_critic}])
     sched = torch.optim.lr_scheduler.LambdaLR(opt, lambda u: 1.0 - u / args.updates)
 
-    workers = Workers(len(args.speeds), env_kwargs, f"{args.run}_train")
+    workers = Workers(len(args.speeds) * per_speed, env_kwargs, f"{args.run}_train")
 
     def act(obs):
         with torch.no_grad():
@@ -236,8 +247,15 @@ def main():
                       "balance_term", "power_term", "smooth_term", "policy_std", "failed", "minutes"])
         start = time.time()
         for u in range(1, args.updates + 1):
-            seed = args.seeds[(u - 1) % len(args.seeds)]
-            traj = workers.rollout([{"wind_speed": ws, "wind_seed": seed, "name": f"ws{ws:g}"} for ws in args.speeds], act)
+            # Each update takes the next `per_speed` seeds in turn, so all training winds are used equally.
+            seeds = [args.seeds[((u - 1) * per_speed + k) % len(args.seeds)] for k in range(per_speed)]
+            seed = "+".join(str(sd) for sd in seeds)
+            episodes = [{"wind_speed": ws, "wind_seed": sd, "name": f"ws{ws:g}_s{sd}"} for ws in args.speeds for sd in seeds]
+            traj = workers.rollout(episodes, act)
+            for t in traj:                      # leave the start-up period out of the batch
+                t["obs"], t["act"], t["rew"], t["info"] = t["obs"][burn:], t["act"][burn:], t["rew"][burn:], t["info"][burn:]
+            speed_of = [ep["wind_speed"] for ep, t in zip(episodes, traj) if len(t["rew"])]
+            traj = [t for t in traj if len(t["rew"])]   # an episode that aborted during start-up has nothing left
 
             obs_l, act_l, logp_l, adv_l, ret_l = [], [], [], [], []
             for t in traj:
@@ -275,11 +293,12 @@ def main():
             moops = np.array([[m[f"rootMOOP{k}"] for k in (1, 2, 3)] for m in info])
             bal = np.abs(moops - moops.mean(1, keepdims=True)).sum(1).mean() / 3 / norm["Ms"]
             pw = 5.0 * np.mean([abs(m["VS_GenPwr"] - P_RATED) for m in info]) / P_RATED
-            rew = [float(t["rew"].mean()) for t in traj]
+            rew = [float(np.mean([t["rew"].mean() for t, w in zip(traj, speed_of) if w == ws] or [np.nan]))
+                   for ws in args.speeds]
             with torch.no_grad():
                 std = model.dist(f_obs).stddev.mean().item()
             row = [u, seed, *rew, float(np.mean(rew)), bal, pw, -float(np.mean(rew)) - bal - pw, std,
-                   sum(t["failed"] for t in traj), (time.time() - start) / 60]
+                   sum(t["failed"] for t in traj) + len(episodes) - len(traj), (time.time() - start) / 60]
             log.writerow([f"{x:.5g}" if isinstance(x, float) else x for x in row])
             fh.flush()
             print(f"update {u:3d} seed {seed}  reward " + " ".join(f"{r:+.3f}" for r in rew) +
