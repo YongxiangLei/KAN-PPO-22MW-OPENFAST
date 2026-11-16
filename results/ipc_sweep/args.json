@@ -1,0 +1,23 @@
+{
+  "name": "ipc_sweep",
+  "controllers": [
+    "pi",
+    "rosco_ipc:3e-10",
+    "rosco_ipc:1e-9",
+    "rosco_ipc:3e-9",
+    "rosco_ipc:1e-8"
+  ],
+  "winds": "train",
+  "speeds": [
+    13.0,
+    16.0,
+    19.0
+  ],
+  "seeds": [
+    101
+  ],
+  "episode_seconds": 300.0,
+  "skip_seconds": 60.0,
+  "pitch_rate_deg": 2.0,
+  "jobs": 1
+}

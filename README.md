@@ -24,7 +24,11 @@ through ROSCO's ZeroMQ interface.
 | `windctrl/train.py` | PPO with a KAN or MLP policy; calibrates the state normalisation on first use |
 | `windctrl/evaluate.py` | closed-loop comparison of controllers: fatigue DELs (rainflow), power and speed regulation, pitch activity |
 | `windctrl/interpret.py` | reads a trained KAN: edge plots, edge sizes, linear and four-gain laws, 1P complex gain |
+| `windctrl/report.py` | collects results, draws the paper figures, writes LaTeX tables and `paper/overleaf.zip` |
 | `scripts/train.sbatch`, `scripts/evaluate.sbatch` | Slurm jobs for training and evaluation |
+| `scripts/pipeline.sh` | unattended driver: wait for training, evaluate, interpret, publish |
+| `paper/` | manuscript project for IEEE Transactions on Sustainable Energy |
+| `results/` | numbers kept in git: training curves, checkpoints, evaluation tables, interpretation |
 | `scripts/make_cases.py`, `scripts/run_cases.sbatch` | open-loop batches of steady, step and turbulent cases |
 | `scripts/zmq_pitch_test.py` | checks that pitch offsets sent over ZeroMQ reach the blades |
 | `scripts/make_framework_figure.py` | redraws the framework diagram in `docs/` (SVG, PDF, PNG) |
@@ -74,6 +78,22 @@ sbatch --export=ALL,POLICY=mlp,RUN=mlp_v1 scripts/train.sbatch     # MLP compari
 Progress is written to `outputs/<run>/progress.csv` and the latest policy to
 `outputs/<run>/checkpoint.pt`. An update is three 300-s episodes (13, 16 and 19 m/s) and takes
 about 17 minutes of wall time, so 100 updates take about 29 hours.
+
+## Unattended pipeline
+
+```bash
+nohup setsid scripts/pipeline.sh > logs/pipeline.out 2>&1 < /dev/null &
+tail -f logs/pipeline.out
+```
+
+Waits for the training jobs, then evaluates, interprets, writes `results/` and the paper project
+under `paper/` (including `paper/overleaf.zip`), and commits and pushes after each stage. Every
+stage is skipped when its output exists, so the script can be restarted at any point.
+
+`python -m windctrl.report` alone refreshes `results/`, the paper figures and tables and the zip
+from whatever is under `outputs/`. To start the paper on Overleaf, use New Project > Upload
+Project with `paper/overleaf.zip`; it is an IEEEtran journal manuscript in which missing results
+and unwritten text are printed in red.
 
 ## Evaluation and interpretation
 

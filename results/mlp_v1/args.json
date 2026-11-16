@@ -1,0 +1,26 @@
+{
+  "policy": "mlp",
+  "run": "mlp_v1",
+  "updates": 100,
+  "speeds": [
+    13.0,
+    16.0,
+    19.0
+  ],
+  "seeds": [
+    101,
+    102
+  ],
+  "episode_seconds": 300.0,
+  "pitch_rate_deg": 2.0,
+  "theta_max_deg": 4.0,
+  "lr_actor": 0.0003,
+  "lr_critic": 0.001,
+  "gamma": 0.99,
+  "gae_lambda": 0.95,
+  "clip": 0.2,
+  "epochs": 10,
+  "minibatch": 512,
+  "recalibrate": false,
+  "seed": 0
+}

@@ -1,0 +1,2 @@
+update,seed,reward_ws13,reward_ws16,reward_ws19,reward_mean,balance_term,power_term,smooth_term,policy_std,failed,minutes
+1,101,-0.84021,-0.8814,-0.99071,-0.90411,0.81016,0.060244,0.033709,0.30467,0,22.195

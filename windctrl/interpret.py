@@ -118,7 +118,16 @@ def main():
                         "previous_blade_deg_per_MNm": float(g_p * per_mnm), "speed_deg_per_rpm": float(k_w * per_rpm),
                         "constant_deg": float(b0 * theta_max), "G1_abs_deg_per_MNm": float(abs(g1)),
                         "G1_phase_deg": float(np.degrees(np.angle(g1)))}}
+    law["r2_linear"], law["r2_four_gains"] = r2_lin, r2_four
+    law["edge_size_deg"] = size.round(4).tolist()
+    law["states"] = {"source": source, "samples": int(len(S)), "update": int(ckpt["update"])}
     (out / "law.json").write_text(json.dumps(law, indent=2))
+    # Edge curves in physical units, for re-plotting at journal size (windctrl.report).
+    np.savez(out / "edges.npz", grid=grid, edges_deg=theta_max * G,
+             x_phys=np.stack([f(grid) for _, f, _ in physical_axes(norm)]),
+             range_phys=np.stack([[f(np.percentile(S[:, j], 1)), f(np.percentile(S[:, j], 99))]
+                                  for j, (_, f, _) in enumerate(physical_axes(norm))]),
+             labels=np.array([lab for lab, _, _ in physical_axes(norm)]))
 
     # 2. Plot the 18 edges.
     import matplotlib
