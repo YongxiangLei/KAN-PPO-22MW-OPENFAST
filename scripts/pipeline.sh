@@ -79,7 +79,7 @@ EOF
 # ---- 1. ROSCO IPC gain sweep ---------------------------------------------------------------------
 log "stage 1: ROSCO IPC gain sweep"
 while pgrep -u "$USER" -f launch_ipc_sweep > /dev/null; do sleep 60; done
-if [ ! -f outputs/ipc_sweep/results.csv ]; then
+if [ ! -f outputs/ipc_sweep/results.csv ] && [ "$TAG" = "v1" ]; then   # only one pipeline reruns it
     log "sweep results missing; running the sweep as a job"
     evaluate_job 40 "--name ipc_sweep --winds train --seeds 101 --episode-seconds 300 --controllers pi rosco_ipc:3e-10 rosco_ipc:1e-9 rosco_ipc:3e-9 rosco_ipc:1e-8"
 fi
@@ -111,6 +111,7 @@ publish "Add final training curves and checkpoints"
 
 # ---- 3. evaluation -------------------------------------------------------------------------------
 log "stage 3: evaluation on unseen winds"
+[ -f outputs/ipc_sweep/results.csv ] && BEST=$(best_ipc_gain)    # the sweep may have finished since stage 1
 CONTROLLERS="pi"
 KAN_INDEX=1
 if [ -n "$BEST" ]; then CONTROLLERS="$CONTROLLERS $BEST"; KAN_INDEX=2; fi
