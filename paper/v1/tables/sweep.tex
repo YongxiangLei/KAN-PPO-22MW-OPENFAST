@@ -1,0 +1,18 @@
+\begin{table*}[!t]
+\centering
+\caption{ROSCO IPC integral gain on the training winds}
+\label{tab:sweep}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{lccccccc}
+\hline\hline
+Controller & Blade & Tower base & Tower top & Power std & Speed RMSE & Pitch travel & Aborted \\
+\hline
+PI (no IPC) & 35.6 & 43.9 & 17.6 & 0.509 & 0.416 & 0.175 & 0 \\
+$K_I = 0.3\times10^{-3}$ & 35.6 & 44.5 & 15.4 & 0.532 & 0.426 & 0.73 & 0 \\
+$K_I = 1\times10^{-3}$ & 52.5 & 95.6 & 17.8 & 0.734 & 0.59 & 1.07 & 0 \\
+$K_I = 3\times10^{-3}$ & 74.6 & 67.2 & 20.9 & 2.08 & 1.16 & 1.91 & 0 \\
+$K_I = 10\times10^{-3}$ & 63 & 67.6 & 21.1 & 2.01 & 1.14 & 1.91 & 0 \\
+\hline\hline
+\end{tabular}
+\\[2pt]\footnotesize $K_I$ in rad/(MN$\cdot$m$\cdot$s). DELs in MN$\cdot$m, power in MW, speed in rpm, pitch travel in $^\circ$/s.
+\end{table*}
