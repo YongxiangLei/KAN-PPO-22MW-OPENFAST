@@ -1,0 +1,49 @@
+diff --git a/rosco/controller/src/ZeroMQInterface.f90 b/rosco/controller/src/ZeroMQInterface.f90
+index 5155d7c..3a5aac0 100644
+--- a/rosco/controller/src/ZeroMQInterface.f90
++++ b/rosco/controller/src/ZeroMQInterface.f90
+@@ -13,7 +13,7 @@ CONTAINS
+ 
+         character(256) :: zmq_address
+         real(C_DOUBLE) :: setpoints(8)
+-        real(C_DOUBLE) :: turbine_measurements(17)
++        real(C_DOUBLE) :: turbine_measurements(19)
+         CHARACTER(*), PARAMETER                 :: RoutineName = 'UpdateZeroMQ'
+ 
+         ! C interface with ZeroMQ client
+@@ -23,7 +23,7 @@ CONTAINS
+                 import :: C_CHAR, C_DOUBLE
+                 implicit none
+                 character(C_CHAR), intent(out) :: zmq_address(*)
+-                real(C_DOUBLE) :: measurements(17)
++                real(C_DOUBLE) :: measurements(19)
+                 real(C_DOUBLE) :: setpoints(8)
+             end subroutine zmq_client
+         end interface
+@@ -49,6 +49,8 @@ CONTAINS
+             turbine_measurements(15) = LocalVar%FA_Acc_TT
+             turbine_measurements(16) = LocalVar%NacIMU_FA_RAcc
+             turbine_measurements(17) = LocalVar%Azimuth
++            turbine_measurements(18) = LocalVar%WE_Vw          ! estimated wind speed [m/s]
++            turbine_measurements(19) = LocalVar%BlPitchCMeas   ! mean (collective) blade pitch [rad]
+ 
+             write (zmq_address, '(A,A)') TRIM(CntrPar%ZMQ_CommAddress), C_NULL_CHAR
+ #ifdef ZMQ_CLIENT
+diff --git a/rosco/controller/src/zmq_client.c b/rosco/controller/src/zmq_client.c
+index 76b7628..39961e0 100644
+--- a/rosco/controller/src/zmq_client.c
++++ b/rosco/controller/src/zmq_client.c
+@@ -22,11 +22,11 @@ void delete_blank_spaces_in_string(char *s)
+ 
+ int zmq_client (
+     char *zmq_address,
+-    double measurements[17],
++    double measurements[19],
+     double setpoints[8]
+ )
+ {
+-    int num_measurements = 17;  // Number of setpoints and measurements, respectively, and float precision (character length)
++    int num_measurements = 19;  // Number of setpoints and measurements, respectively, and float precision (character length)
+     int char_buffer_size_single = 20; // Char buffer for a single measurement
+     int char_buffer_size_array = (num_measurements * (char_buffer_size_single + 1));  // Char buffer for full messages to and from ROSCO
+     char string_to_ssc[char_buffer_size_array];

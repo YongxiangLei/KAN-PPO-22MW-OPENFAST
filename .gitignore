@@ -1,0 +1,11 @@
+# Simulation outputs and logs (regenerate with scripts/make_cases.py)
+runs/
+logs/
+
+# Third-party sources fetched by the setup steps in README.md
+IEA-22-280-RWT/
+tools/
+
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
