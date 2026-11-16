@@ -15,6 +15,8 @@ Project 2 (planned): a multi-agent (MAPPO) controller for a wind farm of 22 MW t
 Everything runs on the official OpenFAST and ROSCO code; Python talks to the running simulation
 through ROSCO's ZeroMQ interface.
 
+![Framework](docs/framework.png)
+
 | Path | What it is |
 |---|---|
 | `windctrl/env.py` | Gymnasium environment: OpenFAST + ROSCO with per-blade pitch offsets over ZeroMQ |
@@ -25,6 +27,7 @@ through ROSCO's ZeroMQ interface.
 | `scripts/train.sbatch`, `scripts/evaluate.sbatch` | Slurm jobs for training and evaluation |
 | `scripts/make_cases.py`, `scripts/run_cases.sbatch` | open-loop batches of steady, step and turbulent cases |
 | `scripts/zmq_pitch_test.py` | checks that pitch offsets sent over ZeroMQ reach the blades |
+| `scripts/make_framework_figure.py` | redraws the framework diagram in `docs/` (SVG, PDF, PNG) |
 | `patches/` | small ROSCO patch: also send the wind-speed estimate and collective pitch over ZeroMQ |
 
 Status: the environment, both policies, the training loop and the evaluation run end to end on
