@@ -20,14 +20,17 @@ through ROSCO's ZeroMQ interface.
 | `windctrl/env.py` | Gymnasium environment: OpenFAST + ROSCO with per-blade pitch offsets over ZeroMQ |
 | `windctrl/kan.py` | KAN layers (linear term + cubic B-splines per edge) |
 | `windctrl/train.py` | PPO with a KAN or MLP policy; calibrates the state normalisation on first use |
-| `scripts/train.sbatch` | Slurm job for one training run |
+| `windctrl/evaluate.py` | closed-loop comparison of controllers: fatigue DELs (rainflow), power and speed regulation, pitch activity |
+| `windctrl/interpret.py` | reads a trained KAN: edge plots, edge sizes, linear and four-gain laws, 1P complex gain |
+| `scripts/train.sbatch`, `scripts/evaluate.sbatch` | Slurm jobs for training and evaluation |
 | `scripts/make_cases.py`, `scripts/run_cases.sbatch` | open-loop batches of steady, step and turbulent cases |
 | `scripts/zmq_pitch_test.py` | checks that pitch offsets sent over ZeroMQ reach the blades |
 | `patches/` | small ROSCO patch: also send the wind-speed estimate and collective pitch over ZeroMQ |
 
-Status: the environment, both policies and the training loop run end to end on short episodes.
-No full training run has finished yet, and the evaluation (fatigue DELs against ROSCO-only and
-ROSCO IPC) is not written.
+Status: the environment, both policies, the training loop and the evaluation run end to end on
+short episodes; the rainflow counting reproduces the ASTM E1049-85 example and the interpretation
+recovers the gains of a policy with a known law. No full training run has finished yet, so there
+are no performance results, and the ROSCO IPC gain has not been tuned for this turbine.
 
 ## Setup
 
@@ -68,6 +71,23 @@ sbatch --export=ALL,POLICY=mlp,RUN=mlp_v1 scripts/train.sbatch     # MLP compari
 Progress is written to `outputs/<run>/progress.csv` and the latest policy to
 `outputs/<run>/checkpoint.pt`. An update is three 300-s episodes (13, 16 and 19 m/s) and takes
 about 17 minutes of wall time, so 100 updates take about 29 hours.
+
+## Evaluation and interpretation
+
+```bash
+# same winds for every controller; evaluation seeds 201/202, 600-s runs, first 60 s dropped
+sbatch --export=ALL,ARGS="--name eval_v1 --controllers pi rosco_ipc:1e-9 kan:kan_v1 mlp:mlp_v1" scripts/evaluate.sbatch
+
+# tune the ROSCO IPC integral gain (rad/(N m s)) on the training winds
+sbatch --export=ALL,ARGS="--name ipc_sweep --winds train --controllers pi rosco_ipc:3e-10 rosco_ipc:1e-9 rosco_ipc:3e-9" scripts/evaluate.sbatch
+
+# read the trained KAN, then run its four-gain reduction in closed loop
+python -m windctrl.interpret --run kan_v1 --states outputs/eval_v1/states_c2.npz
+sbatch --export=ALL,ARGS="--name eval_law --controllers pi kan:kan_v1 law:kan_v1" scripts/evaluate.sbatch
+```
+
+`outputs/<name>/summary.md` holds the comparison table and `results.csv` the per-run values.
+`states_c<i>.npz` holds the states visited by controller number `i` of the list.
 
 Settings taken from the paper: 6-input state, one offset per blade up to 4 deg with a 0.1 s
 smoothing filter, the three-term reward, network sizes (KAN actor 330 parameters, KAN critic 385;

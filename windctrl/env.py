@@ -92,7 +92,8 @@ class IPCEnv(gym.Env):
 
     def __init__(self, episode_seconds=300.0, decision_dt=0.1, exchange_dt=0.02, theta_max_deg=4.0,
                  filter_tau=0.1, pitch_rate_deg=2.0, wave_hs=4.52, wave_tp=9.45,
-                 w_bal=1.0, w_pow=5.0, w_smooth=0.1, norm=None, workdir=None, keep_runs=False, timeout=600.0):
+                 w_bal=1.0, w_pow=5.0, w_smooth=0.1, norm=None, workdir=None, keep_runs=False, timeout=600.0,
+                 rosco_ipc_ki=0.0, output_dt=0.02):
         self.episode_seconds, self.decision_dt, self.exchange_dt = episode_seconds, decision_dt, exchange_dt
         self.substeps = int(round(decision_dt / exchange_dt))
         self.theta_max = np.deg2rad(theta_max_deg)
@@ -100,6 +101,9 @@ class IPCEnv(gym.Env):
         self.pitch_rate = np.deg2rad(pitch_rate_deg)
         self.wave_hs, self.wave_tp = wave_hs, wave_tp
         self.w_bal, self.w_pow, self.w_smooth = w_bal, w_pow, w_smooth
+        # rosco_ipc_ki > 0 switches on ROSCO's own 1P IPC (Coleman transform + integrator) with that
+        # integral gain in rad/(N m s); used as a baseline, with the policy offsets left at zero.
+        self.rosco_ipc_ki, self.output_dt = rosco_ipc_ki, output_dt
         self.norm = norm or load_norm()
         self.workdir = Path(workdir) if workdir else ROOT / "runs" / f"env_{os.getpid()}"
         self.keep_runs, self.timeout_ms = keep_runs, int(timeout * 1000)
@@ -128,7 +132,7 @@ class IPCEnv(gym.Env):
         make_cases.edit(case / make_cases.INFLOW, {"WindType": 3, "FileName_BTS": f'"{bts}"'})
         make_cases.edit(case / make_cases.FST, {
             "TMax": self.episode_seconds, "TStart": 0.0, "InflowFile": f'"{make_cases.INFLOW}"',
-            "CompElast": 1, "DT": 0.002})
+            "CompElast": 1, "DT": 0.002, "DT_Out": self.output_dt})
         make_cases.edit(case / "IEA-22-280-RWT_SeaState.dat", {
             "WaveMod": 2, "WaveHs": self.wave_hs, "WaveTp": self.wave_tp, "WaveSeed(1)": seed})
 
@@ -149,6 +153,9 @@ class IPCEnv(gym.Env):
         set_discon(discon, "PC_MaxRat", f"{self.pitch_rate:.6f}")
         set_discon(discon, "PC_MinRat", f"{-self.pitch_rate:.6f}")
         set_discon(discon, "LoggingLevel", 0)
+        if self.rosco_ipc_ki > 0:
+            set_discon(discon, "IPC_ControlMode", 1)
+            set_discon(discon, "IPC_KI", f"{self.rosco_ipc_ki:.4e}    0.000e+00")
         (case / make_cases.FST).rename(case / f"{name}.fst")
         return case
 
