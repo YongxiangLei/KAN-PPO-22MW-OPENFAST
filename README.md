@@ -76,7 +76,16 @@ sbatch --export=ALL,POLICY=mlp,RUN=mlp_v1 scripts/train.sbatch     # MLP compari
 ```
 
 Progress is written to `outputs/<run>/progress.csv` and the latest policy to
-`outputs/<run>/checkpoint.pt`. An update is three 300-s episodes (13, 16 and 19 m/s) and takes
+`outputs/<run>/checkpoint.pt`.
+
+Training can be interrupted and continued. The checkpoint written after every update holds the
+networks, the optimiser, the learning-rate schedule and the random state, and `scripts/train.sbatch`
+passes `--resume`, so submitting the same command again carries on from the last finished update
+(a finished run exits at once; to start over, use a new `RUN` name). A run interrupted after two
+updates and resumed gave bit-identical weights to the same run done in one go. With
+`EXTRA="--stop-after N"` a job ends after update `N`, which lets a long training be split over
+several jobs. Checkpoints written before this was added (the `v1` and `v2` runs) hold the networks
+only; resuming one of those starts from a fresh optimiser state. An update is three 300-s episodes (13, 16 and 19 m/s) and takes
 about 17 minutes of wall time, so 100 updates take about 29 hours.
 
 ## Unattended pipeline

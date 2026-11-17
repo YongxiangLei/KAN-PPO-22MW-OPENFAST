@@ -22,6 +22,15 @@ than the paper's 10 deg/s (pass --pitch-rate-deg 10 to reproduce the paper's set
     python -m windctrl.train --policy kan --run kan_v1
     python -m windctrl.train --policy mlp --run mlp_v1
 
+A run can be continued after an interruption (job time limit, node failure): the checkpoint written
+after every update holds the networks, the optimiser, the learning-rate schedule and the random
+state, and
+
+    python -m windctrl.train --run kan_v2 --resume
+
+carries on from the last finished update with the settings the run was started with. With
+--stop-after N a call ends after update N, so a long training can be split over several jobs.
+
 The first run calibrates the state normalisation (config/norm.json) from ROSCO-only episodes on
 the training winds. One update takes about 17 minutes of wall time (300 s at ~0.3x real time),
 so 100 updates take about 29 hours; the three episodes of an update run in parallel.
@@ -30,6 +39,7 @@ import argparse
 import csv
 import json
 import multiprocessing as mp
+import os
 import time
 
 import numpy as np
@@ -212,19 +222,37 @@ def main():
     ap.add_argument("--epochs", type=int, default=10)
     ap.add_argument("--minibatch", type=int, default=512)
     ap.add_argument("--recalibrate", action="store_true", help="recompute config/norm.json even if it exists")
+    ap.add_argument("--resume", action="store_true",
+                    help="continue outputs/<run> from its checkpoint, with the settings stored there; "
+                         "starts from scratch if there is no checkpoint yet")
+    ap.add_argument("--stop-after", type=int,
+                    help="end this call once this update is done; continue later with --resume")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
+
+    out = ROOT / "outputs" / args.run
+    ckpt_path = out / "checkpoint.pt"
+    ckpt = torch.load(ckpt_path, weights_only=False) if args.resume and ckpt_path.is_file() else None
+    if ckpt is not None:
+        # A run is defined by the settings it was started with; only these belong to the present call.
+        call = {"run": args.run, "resume": True, "stop_after": args.stop_after, "recalibrate": False}
+        differ = sorted(k for k, v in vars(args).items() if k not in call and k in ckpt["args"] and ckpt["args"][k] != v)
+        if differ:
+            print(f"note: continuing with the stored settings of the run for: {', '.join(differ)}", flush=True)
+        args = argparse.Namespace(**{**vars(args), **ckpt["args"], **call})
 
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
     torch.set_num_threads(2)
-    out = ROOT / "outputs" / args.run
     out.mkdir(parents=True, exist_ok=True)
     (out / "args.json").write_text(json.dumps(vars(args), indent=2))
 
     env_kwargs = {"episode_seconds": args.episode_seconds, "pitch_rate_deg": args.pitch_rate_deg,
                   "theta_max_deg": args.theta_max_deg}
-    norm = calibrate(args, env_kwargs) if args.recalibrate or not NORM_FILE.is_file() else load_norm()
+    if ckpt is not None:
+        norm = ckpt["norm"]
+    else:
+        norm = calibrate(args, env_kwargs) if args.recalibrate or not NORM_FILE.is_file() else load_norm()
     env_kwargs.update(norm=norm, episode_seconds=args.episode_seconds + args.burn_in_seconds)
     per_speed, burn = args.episodes_per_speed, int(round(args.burn_in_seconds / 0.1))
 
@@ -235,18 +263,45 @@ def main():
                             {"params": model.critic.parameters(), "lr": args.lr_critic}])
     sched = torch.optim.lr_scheduler.LambdaLR(opt, lambda u: 1.0 - u / args.updates)
 
+    first, kept = 1, []
+    if ckpt is not None:
+        model.load_state_dict(ckpt["model"])
+        first = ckpt["update"] + 1
+        if "optimizer" in ckpt:
+            opt.load_state_dict(ckpt["optimizer"])
+            sched.load_state_dict(ckpt["scheduler"])
+            torch.set_rng_state(ckpt["torch_rng"])
+        else:
+            # Checkpoint from before resume support: networks only. Continue with a fresh Adam state at
+            # the learning rate the schedule had reached; close to, but not the same as, an unbroken run.
+            sched.last_epoch = ckpt["update"]
+            for group, base in zip(opt.param_groups, sched.base_lrs):
+                group["lr"] = base * (1.0 - ckpt["update"] / args.updates)
+            print("note: this checkpoint has no optimiser state; continuing with a fresh one", flush=True)
+        if (out / "progress.csv").is_file():      # drop rows of updates that never reached the checkpoint
+            with open(out / "progress.csv", newline="") as fh:
+                kept = [r for r in list(csv.reader(fh))[1:] if r and int(r[0]) <= ckpt["update"]]
+        print(f"resuming {args.run} after update {ckpt['update']} of {args.updates}", flush=True)
+    if first > args.updates:
+        print(f"{args.run} is already complete ({args.updates} updates)")
+        return
+
     workers = Workers(len(args.speeds) * per_speed, env_kwargs, f"{args.run}_train")
 
     def act(obs):
         with torch.no_grad():
             return model.dist(torch.as_tensor(obs)).sample().numpy()
 
-    with open(out / "progress.csv", "w", newline="") as fh:
+    with open(out / "progress.tmp", "w", newline="") as fh:
         log = csv.writer(fh)
         log.writerow(["update", "seed", *[f"reward_ws{ws:g}" for ws in args.speeds], "reward_mean",
                       "balance_term", "power_term", "smooth_term", "policy_std", "failed", "minutes"])
-        start = time.time()
-        for u in range(1, args.updates + 1):
+        log.writerows(kept)
+    os.replace(out / "progress.tmp", out / "progress.csv")
+    with open(out / "progress.csv", "a", newline="") as fh:
+        log = csv.writer(fh)
+        start = time.time() - 60.0 * (float(kept[-1][-1]) if kept else 0.0)   # "minutes" keeps counting
+        for u in range(first, args.updates + 1):
             # Each update takes the next `per_speed` seeds in turn, so all training winds are used equally.
             seeds = [args.seeds[((u - 1) * per_speed + k) % len(args.seeds)] for k in range(per_speed)]
             seed = "+".join(str(sd) for sd in seeds)
@@ -303,8 +358,14 @@ def main():
             fh.flush()
             print(f"update {u:3d} seed {seed}  reward " + " ".join(f"{r:+.3f}" for r in rew) +
                   f"  balance {bal:.3f} power {pw:.3f}  std {std:.3f}  failed {row[-2]}  {row[-1]:.1f} min", flush=True)
+            # Written to a temporary file first, so a job killed mid-save cannot leave a broken checkpoint.
             torch.save({"policy": args.policy, "model": model.state_dict(), "norm": norm, "args": vars(args),
-                        "obs_names": OBS_NAMES, "update": u}, out / "checkpoint.pt")
+                        "obs_names": OBS_NAMES, "update": u, "optimizer": opt.state_dict(),
+                        "scheduler": sched.state_dict(), "torch_rng": torch.get_rng_state()}, out / "checkpoint.tmp")
+            os.replace(out / "checkpoint.tmp", ckpt_path)
+            if args.stop_after and u >= args.stop_after and u < args.updates:
+                print(f"stopping after update {u} as requested; continue with --resume", flush=True)
+                break
     workers.close()
 
 

@@ -134,13 +134,20 @@ def main():
     ap.add_argument("--skip-seconds", type=float, default=60.0)
     ap.add_argument("--pitch-rate-deg", type=float, default=2.0, help="same limit for every controller")
     ap.add_argument("--jobs", type=int, help="controllers run at once (default: all); 1 = one after another")
+    ap.add_argument("--only", type=int, nargs="+",
+                    help="positions (from 0) in --controllers to run in this call. The rest are expected from other "
+                         "calls with the same --name and --controllers (e.g. on another node); the summary is "
+                         "written by whichever call finds all of them done")
     args = ap.parse_args()
 
     seeds = args.seeds or WIND_SETS[args.winds]
     episodes = [{"wind_speed": ws, "wind_seed": sd, "name": f"ws{ws:g}_s{sd}"} for ws in args.speeds for sd in seeds]
     out = ROOT / "outputs" / args.name
     out.mkdir(parents=True, exist_ok=True)
-    (out / "args.json").write_text(json.dumps(vars(args), indent=2))
+    (out / "args.json").write_text(json.dumps({k: v for k, v in vars(args).items() if k != "only"}, indent=2))
+    if args.only is None:                      # a complete run: forget rows left by an earlier one
+        for old in out.glob("rows_c*.json"):
+            old.unlink()
     if not NORM_FILE.is_file():
         print("note: config/norm.json missing; baselines do not need it, policies carry their own")
 
@@ -162,10 +169,17 @@ def main():
             if not t["failed"] and outb.is_file():
                 row.update(indicators(outb, args.skip_seconds))
             rows.append(row)
-        return rows
+        (out / f"rows_c{i}.json").write_text(json.dumps(rows))
 
-    with ThreadPoolExecutor(args.jobs or len(args.controllers)) as pool:
-        rows = [r for rs in pool.map(run, enumerate(args.controllers)) for r in rs]
+    todo = [(i, spec) for i, spec in enumerate(args.controllers) if args.only is None or i in args.only]
+    with ThreadPoolExecutor(args.jobs or len(todo)) as pool:
+        list(pool.map(run, todo))
+    parts = [out / f"rows_c{i}.json" for i in range(len(args.controllers))]
+    missing = [args.controllers[i] for i, part in enumerate(parts) if not part.is_file()]
+    if missing:
+        print(f"not evaluated yet: {missing}; the summary is written once they are done")
+        return
+    rows = [r for part in parts for r in json.loads(part.read_text())]
 
     fields = ["controller", "spec", "wind_speed", "seed", "failed", "mean_reward", *[k for k, _ in INDICATORS], "duration"]
     with open(out / "results.csv", "w", newline="") as fh:

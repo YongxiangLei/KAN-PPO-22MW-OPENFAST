@@ -23,4 +23,4 @@ conda activate windctrl
 export OMP_NUM_THREADS=1
 
 echo "node=$(hostname) policy=${POLICY:-kan} run=${RUN:-kan_ipc} extra=${EXTRA:-}"
-python -m windctrl.train --policy "${POLICY:-kan}" --run "${RUN:-kan_ipc}" ${EXTRA:-}
+python -u -m windctrl.train --policy "${POLICY:-kan}" --run "${RUN:-kan_ipc}" --resume ${EXTRA:-}
