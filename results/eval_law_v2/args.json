@@ -1,0 +1,17 @@
+{
+  "name": "eval_law_v2",
+  "controllers": [
+    "law:kan_v2"
+  ],
+  "winds": "eval",
+  "speeds": [
+    13.0,
+    16.0,
+    19.0
+  ],
+  "seeds": null,
+  "episode_seconds": 600.0,
+  "skip_seconds": 60.0,
+  "pitch_rate_deg": 2.0,
+  "jobs": null
+}

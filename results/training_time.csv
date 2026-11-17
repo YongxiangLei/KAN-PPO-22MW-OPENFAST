@@ -1,5 +1,5 @@
 run,policy,episodes_per_update,learning_s_per_episode,startup_s_per_episode,simulated_s_per_update,updates_done,updates_planned,median_min_per_update,slowest_min_per_update,training_hours_so_far,training_hours_total,total_is,simulation_core_hours,job_id,job_state,job_elapsed_hours,cpus_allocated,allocated_cpu_hours
-kan_v1,KAN,3,300.0,0.0,900.0,66,100,21.72,29.0,24.54,36.84,projected,110.5,206385,RUNNING,25.41,16,406.5
+kan_v1,KAN,3,300.0,0.0,900.0,69,100,21.73,29.2,25.98,37.21,projected,111.6,206385,RUNNING,26.53,16,424.4
 kan_v2,KAN,12,75.0,20.0,1140.0,100,100,7.81,9.65,13.08,13.08,measured,156.9,206685,COMPLETED,13.08,32,418.5
-mlp_v1,MLP,3,300.0,0.0,900.0,64,100,21.68,28.8,23.3,36.31,projected,108.9,206386,RUNNING,23.54,16,376.6
+mlp_v1,MLP,3,300.0,0.0,900.0,67,100,21.68,28.8,24.5,36.42,projected,109.3,206386,RUNNING,24.66,16,394.5
 mlp_v2,MLP,12,75.0,20.0,1140.0,100,100,7.77,8.86,13.01,13.01,measured,156.1,206686,COMPLETED,13.01,32,416.4
