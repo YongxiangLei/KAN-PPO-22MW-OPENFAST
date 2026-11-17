@@ -119,6 +119,10 @@ sbatch --export=ALL,ARGS="--name eval_law --controllers pi kan:kan_v1 law:kan_v1
 ```
 
 `outputs/<name>/summary.md` holds the comparison table and `results.csv` the per-run values.
+
+`results/training_time.md` (and `.csv`) records how long each training run took: minutes per update,
+total hours, simulations run at once and CPUs allocated. It is refreshed by `python -m windctrl.report`;
+the Slurm job of each run is listed in `config/training_jobs.json`.
 `states_c<i>.npz` holds the states visited by controller number `i` of the list.
 
 Settings taken from the paper: 6-input state, one offset per blade up to 4 deg with a 0.1 s
