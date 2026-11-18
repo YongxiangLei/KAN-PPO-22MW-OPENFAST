@@ -3,17 +3,17 @@
 \caption{Closed-loop performance on the evaluation wind fields}
 \label{tab:performance}
 \renewcommand{\arraystretch}{1.15}
-\begin{tabular}{lcccc}
+\begin{tabular}{lccccc}
 \hline\hline
-Indicator & PI & ROSCO IPC & MLP-PPO & KAN-PPO \\
+Indicator & PI & ROSCO IPC & MLP-PPO & KAN-PPO & Four gains \\
 \hline
-Blade-root DEL (MN$\cdot$m) & 28.2 & 26.5 (-6\%) & 23.2 (-18\%) & 23.6 (-16\%) \\
-Tower-base DEL (MN$\cdot$m) & 48.1 & 40 (-17\%) & 50.1 (+4\%) & 53.4 (+11\%) \\
-Tower-top DEL (MN$\cdot$m) & 15.2 & 15.3 (+1\%) & 16.6 (+9\%) & 16.4 (+8\%) \\
-Power std (MW) & 0.25 & 0.25 (-0\%) & 0.253 (+1\%) & 0.27 (+8\%) \\
-Speed RMSE (rpm) & 0.325 & 0.325 (-0\%) & 0.327 (+0\%) & 0.333 (+2\%) \\
-Pitch travel ($^\circ$/s) & 0.137 & 0.538 (+294\%) & 1.06 (+673\%) & 1.04 (+664\%) \\
-Max. pitch ($^\circ$) & 18.1 & 19.6 (+8\%) & 19.4 (+7\%) & 19.6 (+8\%) \\
+Blade-root DEL (MN$\cdot$m) & 28.2 & 26.5 (-6\%) & 23.2 (-18\%) & 23.6 (-16\%) & 23.6 (-16\%) \\
+Tower-base DEL (MN$\cdot$m) & 48.1 & 40 (-17\%) & 50.1 (+4\%) & 53.4 (+11\%) & 49.5 (+3\%) \\
+Tower-top DEL (MN$\cdot$m) & 15.2 & 15.3 (+1\%) & 16.6 (+9\%) & 16.4 (+8\%) & 16 (+5\%) \\
+Power std (MW) & 0.25 & 0.25 (-0\%) & 0.253 (+1\%) & 0.27 (+8\%) & 0.27 (+8\%) \\
+Speed RMSE (rpm) & 0.325 & 0.325 (-0\%) & 0.327 (+0\%) & 0.333 (+2\%) & 0.342 (+5\%) \\
+Pitch travel ($^\circ$/s) & 0.137 & 0.538 (+294\%) & 1.06 (+673\%) & 1.04 (+664\%) & 1.02 (+644\%) \\
+Max. pitch ($^\circ$) & 18.1 & 19.6 (+8\%) & 19.4 (+7\%) & 19.6 (+8\%) & 19.5 (+8\%) \\
 \hline\hline
 \end{tabular}
 \\[2pt]\footnotesize Mean over 6 runs; change from PI in parentheses.
