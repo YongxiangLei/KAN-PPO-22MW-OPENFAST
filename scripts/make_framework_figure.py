@@ -7,7 +7,8 @@ The figure is drawn at its final size: 7.16 in wide (IEEE double-column width), 
 Times-compatible face, lines 0.8 pt. Insert it at 100 % scale (\\includegraphics[width=\\textwidth])
 so the type size in print is what is set here. Fonts are embedded as TrueType in the PDF.
 
-Three panels: (a) the closed loop on OpenFAST, (b) PPO training, (c) evaluation and interpretation.
+Three panels: (a) the closed loop on OpenFAST, with a drawing of the turbine to scale, (b) PPO
+training, (c) evaluation and interpretation.
 All coordinates below are in inches.
 """
 from pathlib import Path
@@ -15,10 +16,12 @@ from pathlib import Path
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from matplotlib.patches import FancyArrowPatch, FancyBboxPatch
+import numpy as np
+from matplotlib.patches import Circle, FancyArrowPatch, FancyBboxPatch, Polygon
 
 OUT = Path(__file__).resolve().parents[1] / "docs"
-W, H = 7.16, 4.66
+GROW = 0.74                      # extra height of the turbine box, which holds a drawing of the turbine
+W, H = 7.16, 4.66 + GROW
 
 plt.rcParams.update({
     "font.family": "serif",
@@ -32,6 +35,7 @@ BLACK, GRAY = "#000000", "#3c3c3c"
 BLUE, ORANGE, GREEN, PURPLE = "#1f5fa8", "#b4560f", "#2a7a4b", "#5b3fa8"
 PANEL = {BLUE: "#eef4fb", ORANGE: "#fcf3e8", GREEN: "#edf6f0"}
 KAN_FILL = "#ece7f7"
+WATER, STEEL, PAINT = "#cfe2f3", "#f3f3f3", "#e3b21a"
 TITLE, BODY, NOTE = 8.0, 7.5, 7.0
 LW = 0.8
 
@@ -72,14 +76,52 @@ def path(points, ls="-"):
     arrow(points[-2], points[-1], ls=ls)
 
 
+def turbine(xc, y_bed, height, width):
+    """Front view of the turbine on its monopile, to scale: 34 m of water, hub 170 m above the sea,
+    blades of 142 m. `y_bed` is the sea bed, `height` reaches from there to the tip of the upper blade,
+    `width` is the width of the strip of sea. Tower and blades are drawn about three times as thick as
+    to scale, so that they stay visible at this size."""
+    s = height / (34.0 + 170.0 + 142.0)                       # inches per metre
+    sea, hub, length = y_bed + 34.0 * s, y_bed + 204.0 * s, 142.0 * s
+    base = sea + 15.0 * s                                     # tower base, on the transition piece
+    edge = {"ec": "#222222", "lw": 0.6, "joinstyle": "round"}
+    # sea with a wavy surface, and the sea bed
+    xs = np.linspace(xc - width / 2, xc + width / 2, 121)
+    surface = sea + 0.007 * np.sin(2 * np.pi * 6 * (xs - xs[0]) / width)
+    ax.fill_between(xs, y_bed, surface, color=WATER, lw=0, zorder=2.5)
+    ax.plot(xs, surface, color=BLUE, lw=0.6, zorder=3)
+    ax.plot(xs[[0, -1]], [y_bed, y_bed], color=GRAY, lw=0.7, zorder=3)
+    # monopile, transition piece, tower
+    for half, y0, y1, half_top, colour in ((0.022, y_bed, sea + 4 * s, 0.022, "#9a9a9a"), (0.027, sea + 4 * s, base, 0.027, PAINT),
+                                           (0.021, base, hub, 0.013, STEEL)):
+        ax.add_patch(Polygon([(xc - half, y0), (xc + half, y0), (xc + half_top, y1), (xc - half_top, y1)], fc=colour,
+                             zorder=3.2, **edge))
+    # blades, one pointing up; the chord is largest at a fifth of the span
+    span = np.array([0.0, 0.04, 0.2, 0.5, 0.8, 1.0]) * length
+    chord = np.array([0.026, 0.026, 0.046, 0.030, 0.016, 0.005])
+    centre = np.array([xc, hub])
+    for angle in np.radians([90.0, 210.0, 330.0]):
+        along, across = np.array([np.cos(angle), np.sin(angle)]), np.array([-np.sin(angle), np.cos(angle)])
+        lead = [centre + r * along + 0.35 * c * across for r, c in zip(span, chord)]
+        trail = [centre + r * along - 0.65 * c * across for r, c in zip(span, chord)]
+        ax.add_patch(Polygon(lead + trail[::-1], fc=STEEL, zorder=3.4, **edge))
+    ax.add_patch(Circle((xc, hub), 0.022, fc="#d0d0d0", ec="#222222", lw=0.6, zorder=3.6))
+    return hub
+
+
 # ---------------------------------------------------------------------------------------------
 # (a) closed loop
 # ---------------------------------------------------------------------------------------------
-panel(BLUE, 2.73, 4.63, "(a)  Closed-loop control on OpenFAST  (policy decision every 0.1 s)")
-TOP, BOT = 4.03, 3.24            # row centres; top boxes 0.66 high, bottom boxes 0.50 high
+panel(BLUE, 2.73, 4.63 + GROW, "(a)  Closed-loop control on OpenFAST")
+ROW, BOT = 3.70, 3.24            # lower edge of the top row; centre of the bottom row (boxes 0.50 high)
+TOP = ROW + (0.66 + GROW) / 2    # centre of the top row: the turbine box is 0.66 + GROW high, the others 0.66
 
 box(0.665, TOP, 1.07, 0.66, "Wind and waves", "TurbSim, NTM class B\n13, 16, 19 m/s\nirregular waves", BLUE)
-box(2.145, TOP, 1.45, 0.66, "IEA 22-MW turbine", "monopile foundation\nOpenFAST aero-hydro-\nservo-elastic model", BLUE)
+# The turbine box: title, a drawing of the turbine, then the text.
+box(2.145, TOP, 1.45, 0.66 + GROW, "IEA 22-MW turbine", "", BLUE)
+ax.text(2.145, ROW + 0.045, "monopile foundation\nOpenFAST aero-hydro-\nservo-elastic model", fontsize=BODY, color=BLACK,
+        ha="center", va="bottom", linespacing=1.22, zorder=3)
+HUB = turbine(2.145, ROW + 0.47, GROW, 1.2)
 box(4.5, TOP, 2.0, 0.66, "State  $\\mathbf{s}$  (6 inputs, normalized)",
     "$\\Delta M_{1,2,3}$   blade-root load differences\n"
     "$\\hat{v}$   estimated wind speed\n$\\omega_g$   generator speed,     $\\beta$   collective pitch", BLUE)
@@ -89,13 +131,13 @@ box(2.145, BOT, 1.45, 0.50, "ROSCO baseline", "collective pitch PI\nand torque c
 box(4.0, BOT, 1.25, 0.50, "Add and limit", "$\\beta_i = \\beta_c + \\Delta\\beta_i$\nrate limit 2°/s", BLUE)
 box(6.0, BOT, 1.45, 0.50, "Scale and filter", "$\\Delta\\beta_i = \\theta_{\\max} a_i$,   $\\theta_{\\max} = 4°$\nfirst-order filter, 0.1 s", BLUE)
 
-arrow((1.2, 4.13), (1.42, 4.13))
+arrow((1.2, HUB), (1.42, HUB))                   # the wind arrives at hub height
 arrow((2.87, TOP), (3.5, TOP))
 note(3.185, TOP + 0.03, "measurements")
 note(3.185, TOP - 0.035, "ZeroMQ", va="top", italic=True)
 arrow((5.5, TOP), (5.66, TOP))
-arrow((6.1, 3.70), (6.1, 3.49))
-note(6.05, 3.595, "action  $\\mathbf{a} \\in [-1, 1]^3$", ha="right", va="center")
+arrow((6.1, TOP - 0.33), (6.1, 3.49))
+note(6.05, (TOP - 0.33 + 3.49) / 2, "action  $\\mathbf{a} \\in [-1, 1]^3$", ha="right", va="center")
 arrow((5.275, BOT), (4.625, BOT))
 note(4.95, BOT + 0.03, "$\\Delta\\beta_{1,2,3}$")
 note(4.95, BOT - 0.035, "ZeroMQ", va="top", italic=True)
@@ -130,7 +172,7 @@ arrow((4.57, MID), (4.73, MID))
 arrow((6.01, MID), (6.17, MID))
 arrow((2.1, 2.73), (2.1, 2.29))
 note(2.16, 2.46, "trajectories  $(\\mathbf{s}, \\mathbf{a}, r)$", ha="left", va="center")
-arrow((6.88, 2.29), (6.88, 3.70))
+arrow((6.88, 2.29), (6.88, TOP - 0.33))
 note(6.83, 2.46, "updated  $\\varphi_{ij}$, $b_i$", ha="right", va="center")
 
 # ---------------------------------------------------------------------------------------------
