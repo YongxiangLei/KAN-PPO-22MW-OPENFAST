@@ -171,3 +171,11 @@ python scripts/zmq_pitch_test.py
 Runs a 60 s case at 18 m/s while a Python ZeroMQ server sends collective and then per-blade pitch
 offsets, and reports whether the blades followed. Per-blade offsets need `Ptch_Cntrl = 1` in
 ServoDyn, which the script sets.
+
+The reply that `windctrl/env.py` sends to ROSCO ends in a zero byte (since 2026-11-18). ROSCO's
+ZeroMQ client (`zmq_client.c`, also in the official release) parses the reply as a C string but
+does not terminate it, so without the zero byte it reads on into whatever its buffer held before.
+The runs made before this change (the `v2` results and the `v1` training) used the unterminated
+reply. A 15-s episode with fixed commands (150 decisions at 16 m/s) gave bit-identical
+observations, rewards and measurements before and after the change; the set-point that stale
+bytes reach first, the last of the eight, is not used in this project.

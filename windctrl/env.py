@@ -208,7 +208,9 @@ class IPCEnv(gym.Env):
         setpoints = list(SETPOINT_DEFAULTS)
         for slot, off in zip(PITCH_OFFSET_SLOTS, offsets):
             setpoints[slot] = float(off)
-        self._sock.send(", ".join(f"{s:016.5f}" for s in setpoints).encode())
+        # The reply ends in a zero byte: ROSCO's ZeroMQ client parses it as a C string but does not
+        # terminate it, so without the zero byte it reads on into whatever its buffer held before.
+        self._sock.send(", ".join(f"{s:016.5f}" for s in setpoints).encode() + b"\x00")
 
     # ---- step -----------------------------------------------------------------------------
 
