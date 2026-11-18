@@ -1,0 +1,21 @@
+{
+  "name": "eval_lawfilter_v2",
+  "controllers": [
+    "pi",
+    "law:kan_v2:tau=0.1",
+    "law:kan_v2:tau=0.3",
+    "law:kan_v2:tau=0.6",
+    "law:kan_v2:tau=1.0"
+  ],
+  "winds": "eval",
+  "speeds": [
+    13.0,
+    16.0,
+    19.0
+  ],
+  "seeds": null,
+  "episode_seconds": 600.0,
+  "skip_seconds": 60.0,
+  "pitch_rate_deg": 2.0,
+  "jobs": null
+}
